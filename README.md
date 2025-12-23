@@ -26,9 +26,12 @@
     * 硬编码的问题
       * 硬编码写入文件操作排除掉（TODO）
       * 一个宽泛的过滤，追溯变量是否是硬编码（TODO）
+    * 引号包裹问题
+      * 很多命令注入的误报，实际上它们被引号括起来，没有注入的空间（TODO）
   * 优化正则
     * 优化WRAPPER_EXEC \b(eval|exec|source|sh|bash|zsh)\b\s+.*\$ 匹配到了/usr/bin/check-dbus.sh "$1"（DONE）
     * 同上优化PIPE_TO_SHELL（DONE）
+    * 环境变量被设置为含变量的动态路径，存在劫持风险 匹配 local path=$1（TODO）
   * 某一个规则的命令太泛了，规则需要迁移和细化(TODO)
   * 补充规则
     * 敏感操作：参数展开，没有使用引号括起（TODO）
