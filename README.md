@@ -32,7 +32,12 @@
     * 优化WRAPPER_EXEC \b(eval|exec|source|sh|bash|zsh)\b\s+.*\$ 匹配到了/usr/bin/check-dbus.sh "$1"（DONE）
     * 同上优化PIPE_TO_SHELL（DONE）
     * 环境变量被设置为含变量的动态路径，存在劫持风险 匹配 local path=$1（TODO）
+    * 对脚本或网页类后缀文件执行了修改操作 匹配 . /app/bin/startGatt.sh（TODO）
+    * 对动态变量路径执行了高危操作 sed -i s/\>80\</\>$HTTP\</g /tmp/config/services/http.service 考虑完善对引号的识别 （TODO）
+    * 检测到跨行远程执行链：从远程下载到授权或直接执行(路径/chmod) （TODO）
   * 某一个规则的命令太泛了，规则需要迁移和细化(TODO)
+    * /tmp/目录操作和目录下的文件操作分开（TODO）
   * 补充规则
     * 敏感操作：参数展开，没有使用引号括起（TODO）
     * 敏感操作：insmod加载模块（TODO）
+    * 动态nvram get和动态nvram set，由此扩展一下自定义动态命令（TODO）
