@@ -333,13 +333,13 @@ def check_file_operations(logical_lines, all_found_scripts, custom_sensitive_lis
         {
             "id": "KNOWN_SCRIPT_OVERWRITE",
             "level": "Critical",
-            "pattern": rf"{MODIFY_OPS}.*?{known_scripts_regex}",
+            "pattern": rf"(?:^|[;&|])\s*(?:[\w./]*/)?\b{MODIFY_OPS}\b\s+[^;&|'\"]*?{known_scripts_regex}",
             "desc": "尝试修改或覆盖本项目目录中已存在的 Shell 脚本"
         },
         {
             "id": "EXT_SCRIPT_MODIFY",
             "level": "Medium",
-            "pattern": rf"{MODIFY_OPS}.*?\.(sh|py|php|js|html|cgi|pl)\b",
+            "pattern": rf"(?:^|[;&|])\s*\b{MODIFY_OPS}\b\s+[^;&|]*?\.(sh|py|php|js|html|cgi|pl)\b",
             "desc": "对脚本或网页类后缀文件执行了修改操作"
         },
         {
@@ -502,65 +502,74 @@ def check_secrets(logical_lines, custom_keywords=None):
     return findings
 
 
-
-
 def check_sensitive_operations(file_full_text, logical_lines, custom_cmds=None):
-    """
-    敏感操作检测模块。
-    :param file_full_text: 去除注释后的全文本字符串（用于长链路分析）
-    :param logical_lines: 预处理后的逻辑行列表（用于精确规则匹配）
-    :param custom_cmds: 用户自定义关注的命令列表
-    """
     findings = []
 
-    # 1. 预定义：自定义命令列表
 
     custom_cmds_regex = "|".join([re.escape(c) for c in custom_cmds])
 
-    # --- 策略 A: 全文本长链路扫描 (解决下载+解压+执行跨行问题) ---
-    # --- 策略 A: 优化后的长链路扫描 ---
-    dl_pattern = r"(?:curl|wget|ftp|rsync|scp)\b"
+    # --- 策略 A: 改进后的长链路扫描 (解决 Python 正则报错问题) ---
+    dl_commands = r"(?:curl|wget|ftp|sftp|rsync|scp)"
+    dl_pattern = rf"\b{dl_commands}\b"
 
-    # 优化后的执行特征：
-    # (chmod 777 或 +x) | (解释器) | (绝对路径执行，常见于 /data/, /tmp/, /var/)
-    exec_pattern = r"(\bchmod\s+(?:\+x|[0-7]{3,4})|\b(?:sh|bash|eval|source)\s+|(?:\./|/(?:data|tmp|var|dev/shm)/)[\w\.\-/]+)"
+    # 优化后的执行特征 (移除了变长后瞻断言，改为使用捕获组包含前缀)
+    # 模式说明：
+    # 1. chmod 授权
+    # 2. 解释器执行
+    # 3. 只有在行首或分号/管道等分隔符后出现的路径才视为执行
+    exec_pattern = r"(\bchmod\s+(?:\+x|[0-7]{3,4})|\b(?:sh|bash|eval|source)\s+|(?:^|[;&|\n])\s*(?:\./|/(?:data|tmp|var|dev/shm)/)[\w\.\-/]+)"
 
     downloads = list(re.finditer(dl_pattern, file_full_text, re.IGNORECASE))
-    executions = list(re.finditer(exec_pattern, file_full_text, re.IGNORECASE))
+    # 注意：这里使用 re.MULTILINE 配合 ^ 符号
+    executions = list(re.finditer(exec_pattern, file_full_text, re.MULTILINE))
 
     for dl in downloads:
         for ex in executions:
             dist = ex.start() - dl.end()
-            # 适当放大距离到 1000，因为中间可能有很多判断逻辑
+            # 确保执行在下载后，且距离在 1000 字符内
             if 0 < dist < 1000:
+                # 获取下载点所在的行结束位置，用于判断 ex 是否在同一行
+                dl_line_end = file_full_text.find('\n', dl.start())
+                if dl_line_end == -1: dl_line_end = len(file_full_text)
+
+                # 逻辑过滤：如果执行点在下载点同一行，且不是明确的 chmod/sh/bash 等命令
+                # 则判定该路径只是下载命令的参数（如 ftp -l /tmp/file），不构成执行链
+                is_explicit_exec = any(keyword in ex.group(0) for keyword in ['chmod', 'sh', 'bash', 'eval', 'source'])
+                if ex.start() < dl_line_end and not is_explicit_exec:
+                    continue
+
                 line_no = file_full_text.count('\n', 0, dl.start()) + 1
                 findings.append({
                     "line": line_no,
                     "rule_id": "LONG_RCE_CHAIN",
                     "level": "Critical",
-                    "description": "检测到跨行远程执行链：从远程下载到授权或直接执行(路径/chmod)",
+                    "description": "检测到跨行远程下载执行链：下载后紧跟授权或独立执行动作",
                     "code": file_full_text[dl.start():ex.end()].strip(),
-                    "matched": f"{dl.group(0)}...{ex.group(0)}"
+                    "matched": f"{dl.group(0)}...{ex.group(0).strip()}"
                 })
                 break
 
-    # --- 策略 B: 逻辑行精确匹配 (环境变量、自定义命令) ---
+    # --- 策略 B: 逻辑行精确匹配 ---
     ops_rules = [
-        # 1. 自定义高频监控命令
+        # 需求 2: 单独添加下载操作匹配规则
+        {
+            "id": "REMOTE_DL_OP",
+            "level": "Low",
+            "pattern": rf"\b{dl_commands}\b",
+            "desc": "检测到远程下载或文件传输相关命令"
+        },
         {
             "id": "CUSTOM_CMD_WATCH",
             "level": "Low",
             "pattern": rf"\b({custom_cmds_regex})\b",
             "desc": "命中用户定义的敏感监控命令"
         },
-        # 2. 环境变量劫持 (PATH/LD_PRELOAD 等)
         {
             "id": "ENV_HIJACK",
             "level": "High",
-            "pattern": r"(?:export\s+)?\b(PATH|LD_PRELOAD|LD_LIBRARY_PATH|PYTHONPATH)\s*=\s*['\"]?[^;|\s\n]*?\$(?!(?:{)?\1\b)[\w{}]+",
+            "pattern": r"(?:^|[;&|])\s*(?<!local\s)(?<!typeset\s)(?:export\s+)?\b(PATH|LD_PRELOAD|LD_LIBRARY_PATH|PYTHONPATH)\b\s*=\s*['\"]?[^;|\s\n]*?\$(?!(?:{)?\1\b)[\w{}]+",
             "desc": "环境变量被设置为含变量的动态路径，存在劫持风险"
         },
-        # 3. 动态导出变量名
         {
             "id": "DYNAMIC_EXPORT",
             "level": "Medium",
@@ -580,7 +589,7 @@ def check_sensitive_operations(file_full_text, logical_lines, custom_cmds=None):
                     "level": rule['level'],
                     "description": rule['desc'],
                     "code": content,
-                    "matched": m.group(0).strip()  # 新增
+                    "matched": m.group(0).strip()
                 })
 
     return findings
