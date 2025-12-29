@@ -37,7 +37,8 @@
     * 对动态变量路径执行了高危操作 sed -i s/\>80\</\>$HTTP\</g /tmp/config/services/http.service 考虑完善对引号的识别 （DONE，规则匹配放弃引号识别）
     * 检测到跨行远程执行链：从远程下载到授权或直接执行(路径/chmod) （TODO） ftp -p -l "/tmp/meminfo/stats- 只有下载动作也被识别，将只有下载和完整执行链分开（DONE）
     * 尝试修改或覆盖本项目目录中已存在的 Shell 脚本 RMAN_CMD='/app/bin/doorman.sh （DONE）
-    * 对动态变量路径执行了高危操作 if isIPv4DHCP $1; then （TODO）
+    * 对动态变量路径执行了高危操作 if isIPv4DHCP $1; then （DONE）
+    * 尝试修改或覆盖本项目目录中已存在的 Shell 脚本 "matched": "tarting atd" "code": "syslog \"Starting atd\""（DONE）
   * 某一个规则的命令太泛了，规则需要迁移和细化(TODO)
     * /tmp/目录操作和目录下的文件操作分开（TODO）
     * 文件操作区分最后的文件是动态的，还是路径是动态的（TODO）
@@ -45,3 +46,10 @@
     * 敏感操作：参数展开，没有使用引号括起（TODO）
     * 敏感操作：insmod加载模块（TODO）
     * 动态nvram get和动态nvram set，由此扩展一下自定义动态命令（TODO）
+    * 增加配置文件
+      * AMI
+      * rsync
+      * ftp
+      * sftp
+      * ssh等
+    * 敏感操作增加命令gzip

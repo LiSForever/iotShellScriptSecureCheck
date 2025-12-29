@@ -333,7 +333,7 @@ def check_file_operations(logical_lines, all_found_scripts, custom_sensitive_lis
         {
             "id": "KNOWN_SCRIPT_OVERWRITE",
             "level": "Critical",
-            "pattern": rf"(?:^|[;&|])\s*(?:[\w./]*/)?\b{MODIFY_OPS}\b\s+[^;&|'\"]*?{known_scripts_regex}",
+            "pattern": rf"(?:(?:\b{MODIFY_OPS}\b\s+)|(?:>\s*|>>\s*))[^;&|]*?{known_scripts_regex}",
             "desc": "尝试修改或覆盖本项目目录中已存在的 Shell 脚本"
         },
         {
@@ -345,7 +345,7 @@ def check_file_operations(logical_lines, all_found_scripts, custom_sensitive_lis
         {
             "id": "DYNAMIC_PATH_OP",
             "level": "Medium",
-            "pattern": rf"{MODIFY_OPS}\s+.*\$",
+            "pattern": rf"(?:^|[;&|])\s*(?:[\w./]*/)?\b{MODIFY_OPS}\b\s+[^;&|]*?\$",
             "desc": "对动态变量路径执行了高危操作"
         }
     ]
@@ -737,7 +737,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # 敏感文件 目录
-    custom_sensitive_list = ['/etc/passwd','/etc/shadow', '/etc/cron.d/', 'openvpn.conf', 'snmpd.conf', '/var/spool/cron/', '/tmp/','lighttpd.conf','nginx.conf',]
+    custom_sensitive_list = ['/etc/passwd','/etc/shadow', '/etc/cron.d/', 'openvpn.conf', 'snmpd.conf', '/var/spool/cron/', '/tmp/','lighttpd.conf','nginx.conf']
     custom_sensitive_list.extend(args.files or [])
     # 敏感关键字提取敏感信息
     default_keywords = ['password', 'passwd', 'secret', 'token', 'credential', 'auth_key', 'passphrase']
