@@ -745,7 +745,8 @@ if __name__ == "__main__":
     default_keywords.extend(args.keys or [])
     # 敏感操作列表
     # custom_cmds = ['nvram get', 'fw_printenv', 'get_config', 'nvram set']
-    custom_cmds = ['rm -rf /']
+    # 添加命令时考虑误报，例如'rm -rf /'会匹配到'rm -rf /aaa'
+    custom_cmds = ['rm -rf / ']
     # 初始化引擎
     scanner = ShellSecurityScanner(
         custom_sensitive_list=custom_sensitive_list,
