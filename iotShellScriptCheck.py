@@ -216,7 +216,14 @@ def check_argument_injection(logical_lines):
         {"id": "CURL_CONFIG_STRICT", "level": "High", "pattern": r"curl\s+.*-[K]\s+\$",
          "desc": "curl 从变量指定的文件读取配置，可能导致敏感信息泄露"},
         {"id": "NETWORK_DYNAMIC_GENERIC", "level": "Low", "pattern": r"(curl|wget)\s+.*\$",
-         "desc": "网络请求工具包含动态参数"}
+         "desc": "网络请求工具包含动态参数"},
+        # --- KERNEL MODULE LOADING ---
+        {
+            "id": "KMOD_DYNAMIC_INJECTION",
+            "level": "High",
+            "pattern": r"(?:^|[;&|])\s*(?:[\w./]*/)?(?:insmod|modprobe)\s+.*\$",
+            "desc": "内核模块加载命令包含动态变量，可能导致内核级劫持"
+        },
     ]
 
     for item in logical_lines:
@@ -738,7 +745,9 @@ if __name__ == "__main__":
 
     # 敏感文件 目录
     # 考虑添加.conf
-    custom_sensitive_list = ['/etc/passwd','/etc/shadow', '/etc/cron.d/', 'openvpn.conf', 'snmpd.conf', '/var/spool/cron/', '/tmp/','lighttpd.conf','nginx.conf']
+    custom_sensitive_list = ['/etc/passwd','/etc/shadow', '/etc/cron.d/', 'openvpn.conf', 'snmpd.conf', '/var/spool/cron/', '/tmp/','lighttpd.conf','nginx.conf','rsyncd.conf','sshd_config','.ssh/',
+                             'vsftpd.conf','proftpd.conf','pure-ftpd.conf','/pure-ftpd/','inetd.conf','xinetd.conf','xinetd.d/','/etc/rc.local/','/etc/systemd/system/','/etc/profile','/etc/bash.bashrc',
+                             '.bashrc','.profile','redis.conf','.htaccess','/etc/ld.so.preload','/etc/exports']
     custom_sensitive_list.extend(args.files or [])
     # 敏感关键字提取敏感信息
     default_keywords = ['password', 'passwd', 'secret', 'token', 'credential', 'auth_key', 'passphrase']
@@ -746,7 +755,7 @@ if __name__ == "__main__":
     # 敏感操作列表
     # custom_cmds = ['nvram get', 'fw_printenv', 'get_config', 'nvram set']
     # 添加命令时考虑误报，例如'rm -rf /'会匹配到'rm -rf /aaa'
-    custom_cmds = ['rm -rf / ']
+    custom_cmds = ['rm -rf / ','rm -rf /;','reboot']
     # 初始化引擎
     scanner = ShellSecurityScanner(
         custom_sensitive_list=custom_sensitive_list,
