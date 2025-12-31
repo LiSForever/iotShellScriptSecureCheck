@@ -737,6 +737,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # 敏感文件 目录
+    # 考虑添加.conf
     custom_sensitive_list = ['/etc/passwd','/etc/shadow', '/etc/cron.d/', 'openvpn.conf', 'snmpd.conf', '/var/spool/cron/', '/tmp/','lighttpd.conf','nginx.conf']
     custom_sensitive_list.extend(args.files or [])
     # 敏感关键字提取敏感信息
