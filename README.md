@@ -7,6 +7,7 @@
  python iotShellScriptCheck.py /any/path/you/want/to/scan -o output.json
 ```
 * audit_agent.py 可以对静态输出结果进行AI审计，筛选误报和真实的漏洞
+  * 使用时，需要在脚本中配置输入输出文件，在.env中配置deepseek的key
 
 ### 规则
 静态扫描规则会匹配如下内容：
