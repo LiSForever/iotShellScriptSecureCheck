@@ -1,5 +1,6 @@
 ### iotShellScriptCheck
 * 用于扫描iot设备的所有shell脚本，基于正则规则匹配其中的值得关注地方
+* 目前误报还是较多，但是相比于逐个脚本人工审计，还是轻松不少
 
 ### 用法
 * iotShellScriptCheck.py 会对指定目录进行静态扫描，并输出结果
