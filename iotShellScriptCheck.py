@@ -304,10 +304,40 @@ def check_file_operations(logical_lines, all_found_scripts, custom_sensitive_lis
     4. 动态变量路径操作
     """
     findings = []
-    final_list = list(set([] + custom_sensitive_list))
+    if not custom_sensitive_list:
+        custom_sensitive_list = []
 
-    # 使用合并后的 final_list 构建正则
-    sensitive_target_pattern = build_sensitive_regex(final_list)
+    # --- 1. 数据分流预处理 ---
+    dir_self_list = []  # 存储目录本身 (形如 /etc/)
+    target_file_list = []  # 存储文件或通配符 (形如 /etc/passwd 或 /tmp/*)
+
+    for path in custom_sensitive_list:
+        if path.endswith('/'):
+            # 目录本身逻辑：去掉末尾斜杠以便统一处理边界
+            dir_self_list.append(path.rstrip('/'))
+        else:
+            # 文件或通配符逻辑
+            target_file_list.append(path)
+
+    # --- 2. 构建正则提取器 ---
+
+    # A. 目录本身正则：匹配目录名后紧跟 (空格、引号、分号、行尾)
+    # 使用 (?=\s|['\"|&;]|$) 确保不匹配子目录
+    if dir_self_list:
+        dir_patterns = [re.escape(d) for d in dir_self_list]
+        sensitive_dir_self_regex = rf"(?:{'|'.join(dir_patterns)})/?(?=\s|['\"|&;]|$)"
+    else:
+        sensitive_dir_self_regex = r"(?!x)x"  # 不匹配任何内容的占位符
+
+    # B. 文件及通配符正则：将 /tmp/* 转换为 /tmp/.*
+    if target_file_list:
+        file_patterns = []
+        for f in target_file_list:
+            escaped = re.escape(f).replace(r'\*', '.*')
+            file_patterns.append(escaped)
+        sensitive_target_pattern = rf"(?:{'|'.join(file_patterns)})"
+    else:
+        sensitive_target_pattern = r"(?!x)x"
 
     # --- 2. 处理已知脚本的匹配 ---
     # 我们不仅关注文件名，也关注这些脚本的相对/绝对路径
@@ -324,12 +354,21 @@ def check_file_operations(logical_lines, all_found_scripts, custom_sensitive_lis
     # 定义“读取”动作：查看内容
     READ_OPS = r"(?:cat|grep|head|tail|more|less|vi|vim)"
 
+    BASE_MODIFY_CMD = r"(?:tee|sed\s+-i|cp|mv|rm|chmod|chown|ln|tar|rsync)"
+
     file_rules = [
         {
             "id": "SENSITIVE_TARGET_MODIFY",
             "level": "High",
             "pattern": rf"{MODIFY_OPS}.*?{sensitive_target_pattern}",
             "desc": "对自定义敏感文件或目录执行了修改/删除操作"
+        },
+        {
+            "id": "SENSITIVE_DIR_SELF_MODIFY",
+            "level": "Critical",
+            # 逻辑：指令或重定向 + [空格] + 敏感目录路径 + [边界断言]
+            "pattern": rf"(?:(?:\b{BASE_MODIFY_CMD}\b\s+)|[>]{{1,2}}\s*){sensitive_dir_self_regex}",
+            "desc": "对敏感目录本身执行了修改/删除操作（非目录下文件）"
         },
         {
             "id": "SENSITIVE_TARGET_READ",
@@ -729,6 +768,102 @@ class ShellSecurityScanner:
             print(f"[-] Failed to save report: {e}")
 
 
+def sort_json_report(input_path, output_path):
+    """
+    读取结果文件，按风险等级(Level)从高到低排序后写入新文件。
+    优先级: Critical > Error > High > Medium > Low
+    """
+    # 1. 定义风险等级权重
+    level_weights = {
+        "Critical": 5,
+        "Error": 4,
+        "High": 3,
+        "Medium": 2,
+        "Low": 1
+    }
+
+    try:
+        # 2. 读取原始文件
+        with open(input_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        if "results" in data and isinstance(data["results"], list):
+            # 3. 执行排序
+            # 排序逻辑：主关键字是风险权重(降序)，次关键字是文件路径(升序)，再次是行号(升序)
+            data["results"].sort(
+                key=lambda x: (
+                    -level_weights.get(x.get("level", "Low"), 0),  # 负号实现降序
+                    x.get("file_path", ""),
+                    x.get("line", 0)
+                )
+            )
+            print(f"成功对 {len(data['results'])} 条结果进行排序。")
+        else:
+            print("警告：未在 JSON 中找到 'results' 列表。")
+
+        # 4. 写入新文件
+        with open(output_path, 'w', encoding='utf-8') as f:
+            # ensure_ascii=False 保证中文正常显示，indent=4 保证格式美观
+            json.dump(data, f, ensure_ascii=False, indent=4)
+
+        print(f"排序后的结果已保存至: {output_path}")
+
+    except FileNotFoundError:
+        print(f"错误：找不到文件 {input_path}")
+    except json.JSONDecodeError:
+        print(f"错误：{input_path} 不是有效的 JSON 文件")
+    except Exception as e:
+        print(f"发生未知错误: {e}")
+
+
+def sort_json_report(input_path, output_path):
+    """
+    读取结果文件，按风险等级(Level)从高到低排序后写入新文件。
+    优先级: Critical > Error > High > Medium > Low
+    """
+    # 1. 定义风险等级权重
+    level_weights = {
+        "Critical": 5,
+        "Error": 4,
+        "High": 3,
+        "Medium": 2,
+        "Low": 1
+    }
+
+    try:
+        # 2. 读取原始文件
+        with open(input_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        if "results" in data and isinstance(data["results"], list):
+            # 3. 执行排序
+            # 排序逻辑：主关键字是风险权重(降序)，次关键字是文件路径(升序)，再次是行号(升序)
+            data["results"].sort(
+                key=lambda x: (
+                    -level_weights.get(x.get("level", "Low"), 0),  # 负号实现降序
+                    x.get("file_path", ""),
+                    x.get("line", 0)
+                )
+            )
+            print(f"成功对 {len(data['results'])} 条结果进行排序。")
+        else:
+            print("警告：未在 JSON 中找到 'results' 列表。")
+
+        # 4. 写入新文件
+        with open(output_path, 'w', encoding='utf-8') as f:
+            # ensure_ascii=False 保证中文正常显示，indent=4 保证格式美观
+            json.dump(data, f, ensure_ascii=False, indent=4)
+
+        print(f"排序后的结果已保存至: {output_path}")
+
+    except FileNotFoundError:
+        print(f"错误：找不到文件 {input_path}")
+    except json.JSONDecodeError:
+        print(f"错误：{input_path} 不是有效的 JSON 文件")
+    except Exception as e:
+        print(f"发生未知错误: {e}")
+
+
 # --- 启动逻辑 ---
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Gemini Shell Security Scanner - IoT Edition")
@@ -744,9 +879,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # 敏感文件 目录
-    # 考虑添加.conf
-    custom_sensitive_list = ['/etc/passwd','/etc/shadow', '/etc/cron.d/', 'openvpn.conf', 'snmpd.conf', '/var/spool/cron/', '/tmp/','lighttpd.conf','nginx.conf','rsyncd.conf','sshd_config','.ssh/',
-                             'vsftpd.conf','proftpd.conf','pure-ftpd.conf','/pure-ftpd/','inetd.conf','xinetd.conf','xinetd.d/','/etc/rc.local/','/etc/systemd/system/','/etc/profile','/etc/bash.bashrc',
+    # 目录分两种：1./tmp/ 以/结尾的目录，进匹配对该目录的操作；2./tmp/*以*结尾的目录，匹配该目录下的任意文件的操作
+    custom_sensitive_list = ['/etc/passwd','/etc/shadow', '/etc/cron.d/*', 'openvpn.conf', 'snmpd.conf', '/var/spool/cron/*', '/tmp/*','lighttpd.conf','nginx.conf','rsyncd.conf','sshd_config','.ssh/*',
+                             'vsftpd.conf','proftpd.conf','pure-ftpd.conf','/pure-ftpd/*','inetd.conf','xinetd.conf','xinetd.d/*','/etc/rc.local/*','/etc/systemd/system/*','/etc/profile','/etc/bash.bashrc',
                              '.bashrc','.profile','redis.conf','.htaccess','/etc/ld.so.preload','/etc/exports']
     custom_sensitive_list.extend(args.files or [])
     # 敏感关键字提取敏感信息
@@ -765,3 +900,6 @@ if __name__ == "__main__":
 
     # 运行扫描
     scanner.run_scan(args.target, output_file=args.output)
+
+    sort_json_report(args.output, args.output)
+
